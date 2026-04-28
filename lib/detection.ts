@@ -25,8 +25,8 @@ export async function processImageBuffer({
 }: ProcessImageOptions): Promise<ProcessImageResult> {
   const suspectHash = await generatePHash(buffer);
 
-  // Optimize comparison: fetch latest 100 entries instead of all
-  const latestOriginals = await Content.find({}).sort({ createdAt: -1 }).limit(100);
+  // Optimize comparison: fetch all entries for accurate match
+  const latestOriginals = await Content.find({});
 
   let bestMatch = null;
   let highestSimilarity = 0;

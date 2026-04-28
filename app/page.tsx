@@ -236,16 +236,16 @@ export default function Home() {
                       <p className="text-gray-400 text-sm uppercase tracking-wider font-semibold">Images Processed</p>
                       <p className="text-4xl font-black text-gray-200 mt-2">{scanData.processed}</p>
                     </div>
-                    <div className={cn("border rounded-2xl p-5 text-center transition-colors duration-500", scanData.leaksDetected > 0 ? "bg-red-500/10 border-red-500/30" : "bg-gray-900/60 border-gray-800")}>
+                    <div className={cn("border rounded-2xl p-5 text-center transition-colors duration-500", (scanData.leaks ?? scanData.leaksDetected ?? 0) > 0 ? "bg-red-500/10 border-red-500/30" : "bg-gray-900/60 border-gray-800")}>
                       <p className="text-gray-400 text-sm uppercase tracking-wider font-semibold">Leaks Detected</p>
-                      <p className={cn("text-4xl font-black mt-2", scanData.leaksDetected > 0 ? "text-red-500" : "text-gray-200")}>{scanData.leaksDetected}</p>
+                      <p className={cn("text-4xl font-black mt-2", (scanData.leaks ?? scanData.leaksDetected ?? 0) > 0 ? "text-red-500" : "text-gray-200")}>{scanData.leaks ?? scanData.leaksDetected ?? 0}</p>
                     </div>
                   </div>
 
                   {/* List */}
-                  {scanData.results && scanData.results.length > 0 ? (
+                  {(scanData.matches || scanData.results) && (scanData.matches || scanData.results).length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {scanData.results.map((res: any, idx: number) => (
+                      {(scanData.matches || scanData.results).map((res: any, idx: number) => (
                         <div key={idx} className="animate-in zoom-in-95 fill-mode-both" style={{ animationDelay: `${idx * 100}ms`}}>
                           <ScanResultCard 
                             source_url={res.source_url}

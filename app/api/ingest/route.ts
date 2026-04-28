@@ -17,30 +17,29 @@ export async function POST(request: Request) {
 
     let targetItems: { url: string, keyword_match: number, source_risk: number }[] = [];
 
-    if (source_type === 'reddit') {
-      const res = await fetch('https://www.reddit.com/r/sports/new.json', {
-        headers: { 'User-Agent': 'SportsLeakDetector/1.0' }
-      });
-      if (!res.ok) throw new Error('Failed to fetch reddit data');
-      const data = await res.json();
-      const posts = data.data.children;
-      for (const post of posts) {
-        const url = post.data.url;
-        const title = post.data.title;
-        const kwMatch = checkKeywords(title);
-        
-        // Only process posts/images where metadata matches keywords
-        if (kwMatch === 0) continue;
+    if (source_type === 'reddit' || source_type === 'unsplash') {
+      const accessKey = process.env.UNSPLASH_ACCESS_KEY;
+      if (!accessKey) throw new Error('UNSPLASH_ACCESS_KEY is not defined in environment variables');
 
-        if (url && url.match(/\.(jpeg|jpg|gif|png)$/i)) {
-          targetItems.push({ url, keyword_match: kwMatch, source_risk: 1.0 });
+      const res = await fetch(`https://api.unsplash.com/photos?per_page=8&client_id=${accessKey}`, {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (!res.ok) throw new Error(`Failed to fetch unsplash data: ${res.status}`);
+      
+      const photos = await res.json();
+      console.log(`Fetched ${photos.length} photos from Unsplash`);
+      
+      for (const photo of photos) {
+        const url = photo.urls?.regular;
+        if (url) {
+          targetItems.push({ url, keyword_match: 1.0, source_risk: 1.0 });
         }
-        if (targetItems.length >= 10) break;
+        if (targetItems.length >= 8) break;
       }
     } else if (source_type === 'url') {
       const urlList = Array.isArray(urls) ? urls : [];
       for (const u of urlList) {
-        targetItems.push({ url: u, keyword_match: checkKeywords(u), source_risk: 0.5 });
+        targetItems.push({ url: u, keyword_match: 1.0, source_risk: 0.5 });
       }
     } else if (source_type === 'blog') {
       if (!blog_url) throw new Error('blog_url is required');
@@ -70,38 +69,61 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid source_type' }, { status: 400 });
     }
 
+    const Content = (await import('@/models/Content')).Content;
+    const contentCount = await Content.countDocuments({});
+    if (contentCount === 0) {
+      return NextResponse.json({
+        processed: 0,
+        leaks: 0,
+        matches: [],
+        message: "No reference images uploaded"
+      });
+    }
+
     let processed = 0;
-    let leaksDetected = 0;
-    const results = [];
+    let leaks = 0;
+    const matches: any[] = [];
 
     for (const item of targetItems) {
+      if (processed >= 8) break;
+
       try {
-        const res = await fetch(item.url);
-        if (!res.ok) continue;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        const res = await fetch(item.url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (!res.ok) {
+          console.log(`Skipped ${item.url}: HTTP ${res.status}`);
+          continue;
+        }
 
         const contentType = res.headers.get('content-type');
-        if (!contentType || !contentType.startsWith('image/')) continue;
+        if (!contentType || !contentType.startsWith('image/')) {
+          console.log(`Skipped ${item.url}: Invalid content-type ${contentType}`);
+          continue;
+        }
 
         const arrayBuffer = await res.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
 
-        const { isLeak, similarity } = await processImageBuffer({
+        const { isLeak, similarity, match } = await processImageBuffer({
           buffer,
           source_type,
           source_url: item.url
         });
 
-        // Calculate confidence
-        const confidenceScore = (0.7 * similarity) + (0.2 * (item.keyword_match * 100)) + (0.1 * (item.source_risk * 100));
-
         processed++;
-        if (isLeak) leaksDetected++;
+        if (isLeak) leaks++;
 
-        results.push({
+        console.log(`Processed image: ${item.url} | Similarity: ${similarity}% | Leak: ${isLeak}`);
+
+        matches.push({
           source_url: item.url,
           similarity,
-          isLeak,
-          confidence: Math.round(confidenceScore * 10) / 10
+          matched_content_id: match ? match.matchedContentId?._id : null,
+          isLeak
         });
       } catch (err) {
         console.error(`Failed to process ${item.url}:`, err);
@@ -109,10 +131,14 @@ export async function POST(request: Request) {
       }
     }
 
+    console.log(`--- Ingestion Complete ---`);
+    console.log(`Processed: ${processed}`);
+    console.log(`Leaks: ${leaks}`);
+
     return NextResponse.json({
       processed,
-      leaksDetected,
-      results
+      leaks,
+      matches
     });
   } catch (error: any) {
     console.error('Ingest Error:', error);
