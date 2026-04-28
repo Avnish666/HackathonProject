@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react';
 import Tabs, { TabType } from '@/components/Tabs';
 import UploadDropzone from '@/components/UploadDropzone';
 import ResultCard from '@/components/ResultCard';
-import { ShieldCheck } from 'lucide-react';
+import ScanResultCard from '@/components/ScanResultCard';
+import { ShieldCheck, Loader2, Search, Link as LinkIcon, Globe } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -13,28 +14,59 @@ function cn(...inputs: ClassValue[]) {
 }
 
 export default function Home() {
+  const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('upload-original');
   const [uploadSuccess, setUploadSuccess] = useState<boolean>(false);
   const [compareResult, setCompareResult] = useState<any>(null);
   const [recentResults, setRecentResults] = useState<any[]>([]);
+  const [loadingRecent, setLoadingRecent] = useState(true);
+  const [recentError, setRecentError] = useState<string | null>(null);
+
+  // Scan states
+  const [scanSourceType, setScanSourceType] = useState<'reddit' | 'url' | 'blog'>('reddit');
+  const [scanInputUrl, setScanInputUrl] = useState<string>('');
+  const [isScanning, setIsScanning] = useState<boolean>(false);
+  const [scanData, setScanData] = useState<any>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   const fetchRecent = async () => {
+    setLoadingRecent(true);
+    setRecentError(null);
     try {
       const res = await fetch('/api/results');
+      console.log('Results Fetch Status:', res.status);
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error: ${res.status}`);
+      }
+      
       const data = await res.json();
+      console.log('Results Fetch Data:', data);
+
       if (data.success) {
         // Return latest 5
         setRecentResults(data.data.slice(0, 5));
+      } else if (Array.isArray(data)) {
+        setRecentResults(data.slice(0, 5));
       }
     } catch (err) {
-      console.error("Failed to fetch recent results");
+      console.error("Fetch error:", err);
+      setRecentError("Failed to fetch recent results");
+    } finally {
+      setLoadingRecent(false);
     }
   };
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // Fetch recent history initially and whenever an operation successfully occurs
   useEffect(() => {
-    fetchRecent();
-  }, [uploadSuccess, compareResult]);
+    if (mounted) {
+      fetchRecent();
+    }
+  }, [mounted, uploadSuccess, compareResult]);
 
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
@@ -50,6 +82,41 @@ export default function Home() {
     console.log("Comparison Response:", response);
     setCompareResult(response.data);
   };
+
+  const handleRunScan = async () => {
+    setIsScanning(true);
+    setScanData(null);
+    setScanError(null);
+
+    try {
+      const payload: any = { source_type: scanSourceType };
+      if (scanSourceType === 'url') {
+        payload.urls = [scanInputUrl];
+      } else if (scanSourceType === 'blog') {
+        payload.blog_url = scanInputUrl;
+      }
+
+      const res = await fetch('/api/ingest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to run scan');
+      }
+      
+      setScanData(data);
+      fetchRecent();
+    } catch (err: any) {
+      setScanError(err.message);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  if (!mounted) return null;
 
   return (
     <main className="min-h-screen bg-black text-gray-200 py-16 px-4 selection:bg-blue-500/30 overflow-hidden relative">
@@ -112,6 +179,93 @@ export default function Home() {
             </div>
           )}
 
+          {activeTab === 'run-scan' && (
+            <div className="space-y-8 animate-in zoom-in-95 duration-500 ease-out fill-mode-both">
+              {/* Scan Controls */}
+              <div className="bg-gray-900/40 backdrop-blur-md border border-gray-800 rounded-3xl p-6 shadow-xl max-w-3xl mx-auto">
+                <h2 className="text-xl font-bold text-gray-200 mb-6 flex items-center gap-2">
+                  <Search className="w-6 h-6 text-blue-400" />
+                  Run External Scan
+                </h2>
+                <div className="flex flex-col md:flex-row gap-4">
+                  <select 
+                    value={scanSourceType}
+                    onChange={(e: any) => setScanSourceType(e.target.value)}
+                    className="bg-gray-950 border border-gray-700 text-gray-200 text-sm rounded-xl focus:ring-blue-500 focus:border-blue-500 block w-full md:w-48 p-3"
+                  >
+                    <option value="reddit">Reddit (r/sports)</option>
+                    <option value="url">Direct URLs</option>
+                    <option value="blog">Blog Scraping</option>
+                  </select>
+
+                  {(scanSourceType === 'url' || scanSourceType === 'blog') && (
+                    <div className="flex-1 relative">
+                      <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                        {scanSourceType === 'url' ? <LinkIcon className="w-5 h-5 text-gray-500"/> : <Globe className="w-5 h-5 text-gray-500"/>}
+                      </div>
+                      <input 
+                        type="text" 
+                        value={scanInputUrl}
+                        onChange={(e) => setScanInputUrl(e.target.value)}
+                        placeholder={scanSourceType === 'url' ? "https://example.com/image.jpg" : "https://example-sports-blog.com"}
+                        className="bg-gray-950 border border-gray-700 text-gray-200 text-sm rounded-xl focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-3"
+                      />
+                    </div>
+                  )}
+
+                  <button 
+                    onClick={handleRunScan}
+                    disabled={isScanning || ((scanSourceType === 'url' || scanSourceType === 'blog') && !scanInputUrl)}
+                    className="flex-shrink-0 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold py-3 px-6 rounded-xl shadow-[0_0_20px_rgba(79,70,229,0.3)] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isScanning && <Loader2 className="w-5 h-5 animate-spin" />}
+                    {isScanning ? "Scanning..." : "Start Scan"}
+                  </button>
+                </div>
+                {scanError && (
+                  <p className="text-red-400 text-sm mt-4 bg-red-500/10 p-3 rounded-lg border border-red-500/20">{scanError}</p>
+                )}
+              </div>
+
+              {/* Scan Results */}
+              {scanData && (
+                <div className="space-y-6 animate-in slide-in-from-bottom-8 duration-500">
+                  {/* Summary */}
+                  <div className="grid grid-cols-2 gap-4 max-w-3xl mx-auto">
+                    <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-5 text-center">
+                      <p className="text-gray-400 text-sm uppercase tracking-wider font-semibold">Images Processed</p>
+                      <p className="text-4xl font-black text-gray-200 mt-2">{scanData.processed}</p>
+                    </div>
+                    <div className={cn("border rounded-2xl p-5 text-center transition-colors duration-500", scanData.leaksDetected > 0 ? "bg-red-500/10 border-red-500/30" : "bg-gray-900/60 border-gray-800")}>
+                      <p className="text-gray-400 text-sm uppercase tracking-wider font-semibold">Leaks Detected</p>
+                      <p className={cn("text-4xl font-black mt-2", scanData.leaksDetected > 0 ? "text-red-500" : "text-gray-200")}>{scanData.leaksDetected}</p>
+                    </div>
+                  </div>
+
+                  {/* List */}
+                  {scanData.results && scanData.results.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {scanData.results.map((res: any, idx: number) => (
+                        <div key={idx} className="animate-in zoom-in-95 fill-mode-both" style={{ animationDelay: `${idx * 100}ms`}}>
+                          <ScanResultCard 
+                            source_url={res.source_url}
+                            similarity={res.similarity}
+                            isLeak={res.isLeak}
+                            confidence={res.confidence}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 bg-gray-900/20 rounded-3xl border border-gray-800 border-dashed max-w-3xl mx-auto">
+                      <p className="text-gray-500 font-medium">No valid images found or processed from this source.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
 
         {/* Recent Results Section */}
@@ -121,7 +275,22 @@ export default function Home() {
           </h3>
           
           <div className="space-y-3 max-w-2xl mx-auto">
-            {recentResults.map((result, index) => (
+            {loadingRecent ? (
+              <div className="text-center py-10 bg-gray-900/20 rounded-2xl border border-gray-800 border-dashed flex flex-col items-center justify-center">
+                <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-4" />
+                <p className="text-gray-500 text-sm">Loading recent results...</p>
+              </div>
+            ) : recentError ? (
+              <div className="text-center py-10 bg-red-900/20 rounded-2xl border border-red-800 border-dashed">
+                <p className="text-red-500 text-sm">{recentError}</p>
+                <button 
+                  onClick={fetchRecent}
+                  className="mt-4 text-xs bg-red-500/20 text-red-400 px-4 py-2 rounded-lg hover:bg-red-500/30 transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : recentResults.map((result, index) => (
               <div 
                 key={result._id} 
                 className="flex items-center justify-between p-4 bg-gray-900/30 backdrop-blur-sm border border-gray-800/60 rounded-2xl hover:bg-gray-800/50 hover:border-gray-600 transition-all duration-300 group animate-in slide-in-from-bottom border-b-2"
@@ -167,7 +336,7 @@ export default function Home() {
               </div>
             ))}
             
-            {recentResults.length === 0 && (
+            {!loadingRecent && !recentError && recentResults.length === 0 && (
               <div className="text-center py-10 bg-gray-900/20 rounded-2xl border border-gray-800 border-dashed">
                 <p className="text-gray-500 text-sm">No analysis runs recorded yet.</p>
               </div>

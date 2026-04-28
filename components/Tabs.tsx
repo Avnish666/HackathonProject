@@ -8,7 +8,7 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export type TabType = 'upload-original' | 'check-leak';
+export type TabType = 'upload-original' | 'check-leak' | 'run-scan';
 
 interface TabsProps {
   activeTab: TabType;
@@ -23,8 +23,9 @@ export default function Tabs({ activeTab, onChange }: TabsProps) {
         {/* Animated Background Selector */}
         <div 
           className={cn(
-            "absolute inset-y-1.5 left-1.5 w-[calc(50%-0.375rem)] bg-gradient-to-r from-blue-600 to-blue-500 rounded-lg transition-transform duration-300 ease-spring shadow-[0_0_15px_rgba(59,130,246,0.3)]",
-            activeTab === 'check-leak' ? "translate-x-full" : "translate-x-0"
+            "absolute inset-y-1.5 left-1.5 w-[calc(33.333%-0.375rem)] bg-gradient-to-r from-blue-600 to-blue-500 rounded-lg transition-transform duration-300 ease-spring shadow-[0_0_15px_rgba(59,130,246,0.3)]",
+            activeTab === 'upload-original' ? "translate-x-0" :
+            activeTab === 'check-leak' ? "translate-x-full" : "translate-x-[200%]"
           )}
         />
         
@@ -32,7 +33,7 @@ export default function Tabs({ activeTab, onChange }: TabsProps) {
         <button
           onClick={() => onChange('upload-original')}
           className={cn(
-            "relative z-10 w-1/2 py-3 text-sm font-semibold tracking-wide transition-colors duration-300 rounded-lg focus:outline-none",
+            "relative z-10 w-1/3 py-3 text-sm font-semibold tracking-wide transition-colors duration-300 rounded-lg focus:outline-none",
             activeTab === 'upload-original' ? "text-white" : "text-gray-400 hover:text-gray-200"
           )}
         >
@@ -43,11 +44,22 @@ export default function Tabs({ activeTab, onChange }: TabsProps) {
         <button
           onClick={() => onChange('check-leak')}
           className={cn(
-            "relative z-10 w-1/2 py-3 text-sm font-semibold tracking-wide transition-colors duration-300 rounded-lg focus:outline-none",
+            "relative z-10 w-1/3 py-3 text-sm font-semibold tracking-wide transition-colors duration-300 rounded-lg focus:outline-none",
             activeTab === 'check-leak' ? "text-white" : "text-gray-400 hover:text-gray-200"
           )}
         >
           Check Leak
+        </button>
+
+        {/* Tab 3: Run Scan */}
+        <button
+          onClick={() => onChange('run-scan')}
+          className={cn(
+            "relative z-10 w-1/3 py-3 text-sm font-semibold tracking-wide transition-colors duration-300 rounded-lg focus:outline-none",
+            activeTab === 'run-scan' ? "text-white" : "text-gray-400 hover:text-gray-200"
+          )}
+        >
+          Run Scan
         </button>
       </div>
     </div>
