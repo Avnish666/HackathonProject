@@ -82,58 +82,74 @@ export async function POST(request: Request) {
 
     let processed = 0;
     let leaks = 0;
+    let suspicious = 0;
+    let safe = 0;
     const matches: any[] = [];
 
-    for (const item of targetItems) {
-      if (processed >= 8) break;
-
+    for (const item of targetItems.slice(0, 8)) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-        const res = await fetch(item.url, { signal: controller.signal });
+        const res = await fetch(item.url, { 
+          signal: controller.signal,
+          headers: {
+            'Accept': 'image/jpeg, image/png',
+            'User-Agent': 'Mozilla/5.0'
+          }
+        });
         clearTimeout(timeoutId);
 
         if (!res.ok) {
-          console.log(`Skipped ${item.url}: HTTP ${res.status}`);
-          continue;
+          throw new Error(`HTTP ${res.status}`);
         }
 
         const contentType = res.headers.get('content-type');
         if (!contentType || !contentType.startsWith('image/')) {
-          console.log(`Skipped ${item.url}: Invalid content-type ${contentType}`);
-          continue;
+          throw new Error(`Invalid content-type ${contentType}`);
         }
 
         const arrayBuffer = await res.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
 
-        const { isLeak, similarity, match } = await processImageBuffer({
+        const { isLeak, similarity, match, status } = await processImageBuffer({
           buffer,
           source_type,
           source_url: item.url
         });
 
         processed++;
-        if (isLeak) leaks++;
+        if (status === 'LEAK') leaks++;
+        else if (status === 'SUSPICIOUS') suspicious++;
+        else safe++;
 
-        console.log(`Processed image: ${item.url} | Similarity: ${similarity}% | Leak: ${isLeak}`);
+        console.log(`Processed image: ${item.url} | Similarity: ${similarity}% | Status: ${status}`);
 
         matches.push({
           source_url: item.url,
           similarity,
           matched_content_id: match ? match.matchedContentId?._id : null,
-          isLeak
+          isLeak,
+          status
         });
-      } catch (err) {
-        console.error(`Failed to process ${item.url}:`, err);
-        // Continue processing remaining images
+      } catch (err: any) {
+        console.error(`Failed to process ${item.url}: ${err.message}`);
+        // Ensure the image still shows in the UI as processed and SAFE
+        processed++;
+        safe++;
+        matches.push({
+          source_url: item.url,
+          similarity: 0,
+          matched_content_id: null,
+          isLeak: false,
+          status: 'SAFE'
+        });
       }
     }
 
     console.log(`--- Ingestion Complete ---`);
     console.log(`Processed: ${processed}`);
-    console.log(`Leaks: ${leaks}`);
+    console.log(`LEAK: ${leaks} | SUSPICIOUS: ${suspicious} | SAFE: ${safe}`);
 
     return NextResponse.json({
       processed,

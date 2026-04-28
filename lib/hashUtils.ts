@@ -21,9 +21,16 @@ export async function generatePHash(imageBuffer: Buffer): Promise<string> {
 
   console.log("✅ Image processed");
 
-  const hash = image.hash(2);
+  let hash = image.hash(2);
 
-  console.log("✅ Hash:", hash);
+  if (!hash) {
+    throw new Error("Failed to generate image hash.");
+  }
+
+  // Ensure it's exactly 64 bits by padding leading zeros
+  hash = hash.padStart(64, '0');
+
+  console.log("✅ Hash generated");
 
   return hash;
 }
@@ -36,13 +43,13 @@ export async function generatePHash(imageBuffer: Buffer): Promise<string> {
  * @returns The total number of differing bits (characters).
  */
 export function calculateHammingDistance(hash1: string, hash2: string): number {
-  if (hash1.length !== hash2.length) {
-    throw new Error('Hashes must be of equal length to calculate Hamming distance.');
-  }
+  const maxLength = Math.max(hash1.length, hash2.length);
+  const h1 = hash1.padStart(maxLength, '0');
+  const h2 = hash2.padStart(maxLength, '0');
 
   let distance = 0;
-  for (let i = 0; i < hash1.length; i++) {
-    if (hash1[i] !== hash2[i]) {
+  for (let i = 0; i < maxLength; i++) {
+    if (h1[i] !== h2[i]) {
       distance++;
     }
   }
@@ -59,15 +66,16 @@ export function calculateHammingDistance(hash1: string, hash2: string): number {
  * @returns Similarity scalar between 0.00 and 100.00.
  */
 export function getSimilarityPercentage(hash1: string, hash2: string): number {
-  if (hash1.length !== hash2.length) {
-    throw new Error('Cannot compute similarity for hashes of different lengths.');
-  }
-
   const distance = calculateHammingDistance(hash1, hash2);
-  const maxLength = hash1.length;
+  const maxLength = Math.max(hash1.length, hash2.length);
 
   const similarity = (1 - distance / maxLength) * 100;
+  const rounded = Math.round(similarity * 100) / 100;
 
-  // Floor/Round to 2 decimal places to keep precision clean
-  return Math.round(similarity * 100) / 100;
+  console.log(`[Hash Compare] Hash1: ${hash1}`);
+  console.log(`[Hash Compare] Hash2: ${hash2}`);
+  console.log(`[Hash Compare] Distance: ${distance}`);
+  console.log(`[Hash Compare] Similarity: ${rounded}%`);
+
+  return rounded;
 }

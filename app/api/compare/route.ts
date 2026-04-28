@@ -63,6 +63,13 @@ export async function POST(request: Request) {
     // Populate the original file data into the response so the frontend can render both images
     const populatedMatch = await Match.findById(newMatch._id).populate('matchedContentId');
 
+    if (!populatedMatch) {
+      return NextResponse.json({
+        success: false,
+        error: "No match found"
+      }, { status: 404 });
+    }
+
     return NextResponse.json({
       success: true,
       data: {

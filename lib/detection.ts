@@ -12,6 +12,7 @@ export interface ProcessImageOptions {
 export interface ProcessImageResult {
   match: any; // Populated match document
   isLeak: boolean;
+  status: 'LEAK' | 'SUSPICIOUS' | 'SAFE';
   suspectHash: string;
   distance: number | null;
   similarity: number;
@@ -56,9 +57,17 @@ export async function processImageBuffer({
 
   const populatedMatch = await IngestMatch.findById(newMatch._id).populate('matchedContentId');
 
+  let status: 'LEAK' | 'SUSPICIOUS' | 'SAFE' = 'SAFE';
+  if (highestSimilarity >= 85) {
+    status = 'LEAK';
+  } else if (highestSimilarity >= 60) {
+    status = 'SUSPICIOUS';
+  }
+
   return {
     match: populatedMatch,
     isLeak: highestSimilarity >= 85,
+    status,
     suspectHash,
     distance: bestDistance,
     similarity: highestSimilarity
